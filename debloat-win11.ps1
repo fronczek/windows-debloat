@@ -231,6 +231,44 @@ function Set-ClassicNotepadShellNew {
     }
 }
 
+function Set-EdgePolicyDefaultsForAllUsers {
+    <#
+    .SYNOPSIS
+        Configures Microsoft Edge policies at HKLM for all existing and future users.
+    #>
+
+    $edgePolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
+    $homepage = 'https://google.com'
+
+    Write-Log "Configuring Microsoft Edge machine-wide policies."
+
+    if ($WhatIfMode) {
+        Write-Log "WHATIF: Would set Edge policy TranslateEnabled=0"
+        Write-Log "WHATIF: Would set Edge policy HomepageLocation='$homepage'"
+        Write-Log "WHATIF: Would set Edge policy HomepageIsNewTabPage=0"
+        Write-Log "WHATIF: Would set Edge policy RestoreOnStartup=1 (restore previous session)"
+        Write-Log "WHATIF: Would set Edge policy HubsSidebarEnabled=0 (disable Copilot chat/sidebar)"
+        return
+    }
+
+    try {
+        if (-not (Test-Path $edgePolicyPath)) {
+            New-Item -Path $edgePolicyPath -Force | Out-Null
+        }
+
+        New-ItemProperty -Path $edgePolicyPath -Name 'TranslateEnabled' -Value 0 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $edgePolicyPath -Name 'HomepageLocation' -Value $homepage -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $edgePolicyPath -Name 'HomepageIsNewTabPage' -Value 0 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $edgePolicyPath -Name 'RestoreOnStartup' -Value 1 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $edgePolicyPath -Name 'HubsSidebarEnabled' -Value 0 -PropertyType DWord -Force | Out-Null
+
+        Write-Log "Configured Edge policies: translation disabled, homepage set to $homepage, restore previous session enabled, Copilot chat/sidebar disabled."
+    }
+    catch {
+        Write-Log "Failed to configure Edge policies: $($_.Exception.Message)" 'ERROR'
+    }
+}
+
 Write-Log "Starting Windows 11 Appx debloat."
 Write-Log "Log file: $LogPath"
 
@@ -252,6 +290,7 @@ Set-OldRightClickMenuForAllUsers
 Write-Log "Finished Windows 11 Appx debloat."
 
 Set-ClassicNotepadShellNew
+Set-EdgePolicyDefaultsForAllUsers
 
 Write-Host ''
 Write-Host 'Verification commands:'
