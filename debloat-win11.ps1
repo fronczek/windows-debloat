@@ -314,7 +314,7 @@ function Set-VisualEffectsForAllUsers {
             continue
         }
 
-        $mountName = "WDL_$($sid.Split('-')[-1])"
+        $mountName = "TEMP_USER_$($sid -replace '-', '_')"
         $mounted = $false
         try {
             if ($WhatIfMode) {
@@ -343,7 +343,15 @@ function Set-VisualEffectsForAllUsers {
         }
     }
 
-    $defaultProfileDat = Join-Path $env:SystemDrive 'Users\Default\NTUSER.DAT'
+    $defaultProfileRoot = (Get-ItemProperty -Path $profileListPath -Name 'Default' -ErrorAction SilentlyContinue).Default
+    if (-not $defaultProfileRoot) {
+        $defaultProfileRoot = Join-Path $env:SystemDrive 'Users\Default'
+    }
+    else {
+        $defaultProfileRoot = [Environment]::ExpandEnvironmentVariables($defaultProfileRoot)
+    }
+
+    $defaultProfileDat = Join-Path $defaultProfileRoot 'NTUSER.DAT'
     if (Test-Path $defaultProfileDat) {
         $defaultMountName = 'WDL_DefaultProfile'
         $mountedDefault = $false
