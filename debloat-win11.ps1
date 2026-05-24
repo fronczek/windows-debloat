@@ -224,7 +224,7 @@ public static class RegistryPrivilege {
             [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadSubTree,
             [System.Security.AccessControl.RegistryRights]::ReadPermissions
         )
-        if (-not $readAclKey) { throw "Could not open CLSID key for reading original ACL." }
+        if (-not $readAclKey) { throw "Could not open CLSID key '$clsidSubKey' for reading original ACL." }
         $originalAcl = $readAclKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::All)
         $readAclKey.Close()
 
@@ -371,7 +371,7 @@ function Set-VisualEffectsProfile {
     $desktopPath = "$HiveRoot\Control Panel\Desktop"
     $windowMetricsPath = "$desktopPath\WindowMetrics"
 
-    Write-Log "Applying visual-effects profile for $ScopeLabel (disable animations, keep shadows/font smoothing/wallpaper)."
+    Write-Log "Applying visual-effects profile for $ScopeLabel (disable animations, keep shadows/font smoothing/desktop composition/themes)."
 
     if ($WhatIfMode) {
         Write-Log "WHATIF: Would set animation-related effects to disabled under '$visualEffectsPath'"
