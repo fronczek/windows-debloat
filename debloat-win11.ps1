@@ -169,19 +169,91 @@ function Remove-ProvisionedAppxForFutureUsers {
 
 function Set-OldRightClickMenuForAllUsers {
     $classicMenuClsid = '{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}'
-    $keyPath = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\$classicMenuClsid\InprocServer32"
+    $clsidSubKey      = "SOFTWARE\Classes\CLSID\$classicMenuClsid"
+    $fullKeyPath      = "Registry::HKEY_LOCAL_MACHINE\$clsidSubKey\InprocServer32"
 
     Write-Log "Configuring classic right-click menu for all existing and new users."
 
     if ($WhatIfMode) {
-        Write-Log "WHATIF: New-Item -Path '$keyPath' -Force"
-        Write-Log "WHATIF: Set-ItemProperty -Path '$keyPath' -Name '(default)' -Value ''"
+        Write-Log "WHATIF: Would take ownership of HKLM:\$clsidSubKey and create InprocServer32 subkey with empty default value."
         return
     }
 
+    # The CLSID key is owned by NT SERVICE\TrustedInstaller and is write-protected
+    # even for elevated Administrator sessions.  We must:
+    #   1. Enable SeTakeOwnershipPrivilege in the current process token.
+    #   2. Take ownership of the parent CLSID key (new owner = Administrators).
+    #   3. Grant Administrators FullControl so we can create the child subkey.
+
+    if (-not ('RegistryPrivilege' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class RegistryPrivilege {
+    [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
+    static extern bool AdjustTokenPrivileges(IntPtr htok, bool disall,
+        ref TokPriv1Luid newst, int len, IntPtr prev, IntPtr relen);
+    [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
+    static extern bool OpenProcessToken(IntPtr h, int acc, ref IntPtr phtok);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool LookupPrivilegeValue(string host, string name, ref long pluid);
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    struct TokPriv1Luid { public int Count; public long Luid; public int Attr; }
+    const int SE_PRIVILEGE_ENABLED = 2, TOKEN_QUERY = 8, TOKEN_ADJUST_PRIVILEGES = 32;
+    public static void Enable(string privilege) {
+        IntPtr htok = IntPtr.Zero;
+        OpenProcessToken(System.Diagnostics.Process.GetCurrentProcess().Handle,
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, ref htok);
+        TokPriv1Luid tp; tp.Count = 1; tp.Luid = 0; tp.Attr = SE_PRIVILEGE_ENABLED;
+        LookupPrivilegeValue(null, privilege, ref tp.Luid);
+        AdjustTokenPrivileges(htok, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+    }
+}
+'@
+    }
+
     try {
-        New-Item -Path $keyPath -Force -ErrorAction Stop | Out-Null
-        Set-ItemProperty -Path $keyPath -Name '(default)' -Value '' -ErrorAction Stop
+        # Enable token privileges required for ownership transfer
+        [RegistryPrivilege]::Enable('SeTakeOwnershipPrivilege')
+        [RegistryPrivilege]::Enable('SeRestorePrivilege')
+
+        $admSid = [System.Security.Principal.SecurityIdentifier]::new(
+            [System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+
+        # Step 1: take ownership of the CLSID key
+        $ownerKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+            $clsidSubKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+            [System.Security.AccessControl.RegistryRights]::TakeOwnership
+        )
+        if (-not $ownerKey) { throw "Could not open CLSID key for TakeOwnership." }
+        $acl = $ownerKey.GetAccessControl([System.Security.AccessControl.AccessControlSections.None])
+        $acl.SetOwner($admSid)
+        $ownerKey.SetAccessControl($acl)
+        $ownerKey.Close()
+
+        # Step 2: grant Administrators FullControl (now that we own the key)
+        $aclKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+            $clsidSubKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+            [System.Security.AccessControl.RegistryRights]::ChangePermissions
+        )
+        if (-not $aclKey) { throw "Could not open CLSID key for ChangePermissions." }
+        $acl = $aclKey.GetAccessControl()
+        $rule = [System.Security.AccessControl.RegistryAccessRule]::new(
+            $admSid,
+            [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        $acl.AddAccessRule($rule)
+        $aclKey.SetAccessControl($acl)
+        $aclKey.Close()
+
+        # Step 3: create InprocServer32 subkey with an empty default value
+        New-Item -Path $fullKeyPath -Force -ErrorAction Stop | Out-Null
+        Set-ItemProperty -Path $fullKeyPath -Name '(default)' -Value '' -ErrorAction Stop
         Write-Log "Classic right-click menu configured at machine scope."
     }
     catch {
