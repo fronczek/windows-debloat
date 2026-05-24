@@ -59,6 +59,9 @@ $Targets = @(
     'Microsoft.XboxIdentityProvider',
     'Microsoft.XboxSpeechToTextOverlay',
 
+    # Windows 11 Notepad (Store app) – replaced below with classic notepad.exe
+    'Microsoft.WindowsNotepad',
+
     # Optional / often unwanted
     'Microsoft.Microsoft3DViewer',
     'Microsoft.MixedReality.Portal',
@@ -77,7 +80,6 @@ $ProtectedExamples = @(
     'Microsoft.Windows.Photos',
     'Microsoft.Paint',
     'Microsoft.SecHealthUI',
-    'Microsoft.WindowsNotepad',
     'Microsoft.ScreenSketch',
     'Microsoft.HEIFImageExtension',
     'Microsoft.VP9VideoExtensions',
@@ -164,6 +166,48 @@ function Remove-ProvisionedAppxForFutureUsers {
     }
 }
 
+function Set-ClassicNotepadShellNew {
+    <#
+    .SYNOPSIS
+        Restores right-click "New Text Document" and sets classic notepad.exe as the
+        default .txt opener via HKLM, covering all existing and future users.
+    #>
+
+    $notepadPath = "$env:SystemRoot\System32\notepad.exe"
+
+    Write-Log "Restoring right-click 'New Text Document' using classic notepad.exe ($notepadPath)."
+
+    if ($WhatIfMode) {
+        Write-Log "WHATIF: Would set HKLM:.txt\ShellNew NullFile and txtfile open command to '$notepadPath'"
+        return
+    }
+
+    try {
+        # Right-click New > Text Document (applies to all users via HKLM)
+        $shellNewPath = 'HKLM:\SOFTWARE\Classes\.txt\ShellNew'
+        if (-not (Test-Path $shellNewPath)) {
+            New-Item -Path $shellNewPath -Force | Out-Null
+        }
+        New-ItemProperty -Path $shellNewPath -Name 'NullFile' -Value '' -PropertyType String -Force | Out-Null
+        Write-Log "Set ShellNew NullFile for .txt (all users)"
+
+        # Ensure .txt default ProgID is txtfile
+        $txtPath = 'HKLM:\SOFTWARE\Classes\.txt'
+        New-ItemProperty -Path $txtPath -Name '' -Value 'txtfile' -PropertyType String -Force | Out-Null
+
+        # Ensure txtfile opens with classic notepad.exe
+        $openCmdPath = 'HKLM:\SOFTWARE\Classes\txtfile\shell\open\command'
+        if (-not (Test-Path $openCmdPath)) {
+            New-Item -Path $openCmdPath -Force | Out-Null
+        }
+        New-ItemProperty -Path $openCmdPath -Name '' -Value "`"$notepadPath`" `"%1`"" -PropertyType String -Force | Out-Null
+        Write-Log "Set txtfile open command: `"$notepadPath`" `"%1`""
+    }
+    catch {
+        Write-Log "Failed to restore classic Notepad ShellNew: $($_.Exception.Message)" 'ERROR'
+    }
+}
+
 Write-Log "Starting Windows 11 Appx debloat."
 Write-Log "Log file: $LogPath"
 
@@ -181,6 +225,8 @@ foreach ($target in $Targets) {
 }
 
 Write-Log "Finished Windows 11 Appx debloat."
+
+Set-ClassicNotepadShellNew
 
 Write-Host ''
 Write-Host 'Verification commands:'
