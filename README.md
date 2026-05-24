@@ -44,6 +44,10 @@ Applied behavior:
 * menu-related animations are disabled (`MenuAnimation`, `ComboBoxAnimation`, `ListBoxSmoothScrolling`, `TooltipAnimation`, `SelectionFade`, `TaskbarAnimations`, `ControlAnimations`)
 * shadows and dragging are kept enabled (`DropShadow`, `CursorShadow`, `DragFullWindows`)
 
+### New Outlook taskbar pin cleanup
+
+The script also removes **New Outlook** taskbar pins for the user running it, preventing stale taskbar buttons from triggering a reinstall attempt after the app package is removed.
+
 ## Usage
 
 ```powershell
