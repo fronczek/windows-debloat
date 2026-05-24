@@ -219,14 +219,14 @@ function Set-ClassicNotepadShellNew {
         if (-not (Test-Path $txtPath)) {
             New-Item -Path $txtPath -Force | Out-Null
         }
-        Set-ItemProperty -Path $txtPath -Name '(default)' -Value 'txtfile'
+        Set-ItemProperty -Path $txtPath -Name '(default)' -Value 'txtfile' -Force
 
         # Ensure txtfile opens with classic notepad.exe
         $openCmdPath = 'HKLM:\SOFTWARE\Classes\txtfile\shell\open\command'
         if (-not (Test-Path $openCmdPath)) {
             New-Item -Path $openCmdPath -Force | Out-Null
         }
-        Set-ItemProperty -Path $openCmdPath -Name '(default)' -Value "`"$notepadPath`" `"%1`""
+        Set-ItemProperty -Path $openCmdPath -Name '(default)' -Value "`"$notepadPath`" `"%1`"" -Force
         Write-Log "Set txtfile open command: `"$notepadPath`" `"%1`""
     }
     catch {
